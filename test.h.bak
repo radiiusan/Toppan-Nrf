@@ -1,0 +1,19 @@
+#ifndef __TLV_H__
+#define __TLV_H__
+
+typedef enum  
+{
+	EXIT = 48,
+	FLASH,
+	LED,
+  ADDCARD,
+	GETCARD,
+  SUSPEND,
+  RESUME,
+  DELETE,
+	MENU,
+  MAX_COMMANDS
+} COMMANDS;
+
+
+#endif /* __TLV_H__ */

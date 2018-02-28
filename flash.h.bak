@@ -1,0 +1,8 @@
+#ifndef __FLASH_H__
+#define __FLASH_H__
+
+uint32_t FlashRead(uint32_t *address, uint16_t length, uint8_t *readBuf);
+uint32_t FlashWrite(uint32_t address, uint16_t length, uint8_t *writeBuf);
+
+#endif /* __FLASH_H__ */
+
