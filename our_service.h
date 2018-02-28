@@ -27,7 +27,6 @@ typedef struct
     ble_gatts_char_handles_t    char_handles;
 } ble_os_t;
 
-extern ble_os_t							 						 m_our_service;
 /**@brief Function for handling BLE Stack events related to our service and characteristic.
  *
  * @details Handles all events from the BLE stack of interest to Our Service.
@@ -50,10 +49,6 @@ void our_service_init(ble_os_t * p_our_service);
  * @param[in]   p_our_service                     Our Service structure.
  * @param[in]   characteristic_value     New characteristic value.
  */
-void our_characteristic_update(ble_os_t *p_our_service);
-uint16_t get_ble_data(void);
-void put_ble_data(ble_os_t *p_our_service);
-void power_manage(void);
-void nstrcpy(char *dst, char *src, uint16_t n);
+void our_temperature_characteristic_update(ble_os_t *p_our_service, int32_t *temperature_value);
 
 #endif  /* _ OUR_SERVICE_H__ */

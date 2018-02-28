@@ -106,6 +106,5 @@ typedef struct apdu {
 } APDU;
 
 void FormTLV(uint8_t* BLEPkt, uint16_t size);
-void ProcessTLV(void);
 
 #endif /* __TLV_H__ */

@@ -11,6 +11,7 @@ typedef enum
   SUSPEND,
   RESUME,
   DELETE,
+	DELETEALL,
 	MENU,
   MAX_COMMANDS
 } COMMANDS;

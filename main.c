@@ -63,7 +63,8 @@ static dm_application_instance_t         m_app_handle;                          
 
 static uint16_t                          m_conn_handle = BLE_CONN_HANDLE_INVALID;   /**< Handle of the current connection. */
 
-ble_os_t							 						 m_our_service;
+static ble_os_t							 						 m_our_service;
+
 // Declare an app_timer id variable and define our timer interval and define a timer interval
 APP_TIMER_DEF(m_our_char_timer_id);
 #define OUR_CHAR_TIMER_INTERVAL     APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER) // 1000 ms intervals
@@ -515,7 +516,7 @@ static void buttons_leds_init(bool *p_erase_bonds)
 
 /**@brief Function for the Power manager.
  */
-void power_manage(void)
+static void power_manage(void)
 {
     uint32_t err_code = sd_app_evt_wait();
     APP_ERROR_CHECK(err_code);
@@ -671,10 +672,9 @@ int main(void)
     buttons_leds_init(&erase_bonds);
 */	
 		
-//		Console_Test();
-#if 1
-		clock_initialization();
-		//printf("\033[2J\033[;HCharacteristic Tutorial, Completed Code\r\n");
+		Console_Test();
+
+/*		//BLE
 		// Initialize.
     timers_init();
     buttons_leds_init(&erase_bonds);
@@ -694,12 +694,8 @@ int main(void)
     for (;;)
     {
         power_manage();
-				if (m_our_service.conn_handle == BLE_CONN_HANDLE_INVALID)
-					continue;
-//				put_ble_data(&m_our_service);
-				get_ble_data();
     }
-#endif 		
+
 		//ToDo I/O Configurations	
 		//ToDo Buttons*/
 }

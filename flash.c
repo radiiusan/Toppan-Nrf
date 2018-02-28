@@ -101,21 +101,22 @@ void Flash_Test(void)
     pg_num  = NRF_FICR->CODESIZE - 1;  // Use last page in flash
 		
 		uint32_t * write_address;
+		uint32_t byte1 = 0x00FF00FF, byte2 = 0xFF00FF00;
 		write_address = (uint32_t *)(pg_size * pg_num);		
 		// Erase page:
 		flash_page_erase((uint32_t*)write_address);		
 		// Write data
-		flash_word_write(write_address, 0xAAAAAAAA);
+		flash_word_write(write_address, byte1);
 		write_address++;
-		flash_word_write(write_address, 0x55555555);	
-    printf("Flash write done\n\r");
+		flash_word_write(write_address, byte2);	
+		printf("Flash write data\r\n%x%x\n\r",byte1,byte2);
 	
 		// Start address:
 		uint8_t * read_address;
 	  uint8_t rbuff[8];
 		read_address = (uint8_t *)(pg_size * pg_num);	
 		FlashRead(read_address, sizeof(rbuff), (uint8_t*)rbuff);		
+    printf("Flash read data\r\n");
 		Rad_UartWriteInHex(rbuff, 8);
-    printf("Flash data read\n\r");		
 		nrf_delay_ms(500);					
 }

@@ -20,7 +20,8 @@ static void display_menu(void)
     printf(" 5 - Suspend\n\r");	
     printf(" 6 - Resume\n\r");		
     printf(" 7 - Delete\n\r");	
-	  printf(" 8 - Menu\n\r");
+    printf(" 8 - DeleteAll\n\r");		
+	  printf(" 9 - Menu\n\r");
 		nrf_delay_ms(500);		
 }
 
@@ -109,9 +110,9 @@ void Console_Test(void)
 					
 					case GETCARDS:
 					{
-						uint8_t buff[]= {0x27,0x0,0x0};
+						uint8_t buff[]= {0x27,0x0};
 						FormTLV((uint8_t *)buff, sizeof(buff));	
-						printf("GetCard Done");							
+						printf("GetCards Done");							
 					}
 					break;
 					
@@ -139,6 +140,14 @@ void Console_Test(void)
 					}
 					break;				
 
+					case DELETEALL:
+					{
+						uint8_t buff[]= {0xFE,0x0,0x00};
+						FormTLV((uint8_t *)buff, sizeof(buff));	
+						printf("Delete All Done");							
+					}
+					break;		
+					
 					case MENU:
 					{
 						display_menu();

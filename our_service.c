@@ -5,25 +5,9 @@
 #include "our_service.h"
 #include "ble_srv_common.h"
 #include "app_error.h"
-#include "nrf_delay.h"
-#include "app_timer.h"
-#include "tlv.h"
 
-#define	FRAMESIZE	20
-
-uint32_t   err_code;
-ble_gatts_hvx_params_t hvx_params;
-ble_gap_conn_params_t conn_params_req;
-// Declare buffer variable to hold received frame data. Should not be more than 20
-char data_buffer[20];
-char full_data[1024];
-bool start_of_pkt = true;
-bool cccd_msg_rcvd = false;
-bool Tlvformed = false;
-bool notif_indic_enabled = false;
-uint16_t rem_pktlen;
-uint16_t pktlen;
-uint8_t fragment;
+ble_gattc_evt_write_rsp_t mob_rsp;
+ble_gattc_evt_hvx_t mob_data;
 
 /**@brief Function for handling BLE GATTS EVENTS
  * 
@@ -36,6 +20,42 @@ uint8_t fragment;
  *
  */
 /*
+static void on_ble_write(ble_os_t *p_our_service, ble_evt_t *p_ble_evt)
+{
+    // Declare buffer variable to hold received data. The data can only be 32 bit long.
+    uint32_t data_buffer;
+    // Populate ble_gatts_value_t structure to hold received data and metadata.
+    ble_gatts_value_t rx_data;
+    rx_data.len = sizeof(uint32_t);
+    rx_data.offset = 0;
+    rx_data.p_value = (uint8_t*)&data_buffer;
+    
+    // Check if write event is performed on our characteristic or the CCCD
+    if(p_ble_evt->evt.gatts_evt.params.write.handle == p_our_service->char_handles.value_handle)
+    {
+        // Get data
+        sd_ble_gatts_value_get(p_our_service->conn_handle, p_our_service->char_handles.value_handle, &rx_data);
+        // Print handle and value 
+        printf("Value received on handle %#06x: %#010x\r\n", p_ble_evt->evt.gatts_evt.params.write.handle, data_buffer);
+    }
+    else if(p_ble_evt->evt.gatts_evt.params.write.handle == p_our_service->char_handles.cccd_handle)
+    {
+        // Get data
+        sd_ble_gatts_value_get(p_our_service->conn_handle, p_our_service->char_handles.cccd_handle, &rx_data);
+        // Print handle and value 
+        printf("Value received on handle %#06x: %#06x\r\n", p_ble_evt->evt.gatts_evt.params.write.handle, data_buffer);
+        if(data_buffer == 0x0001)
+        {
+            printf("Notification enabled\r\n");
+        }
+        else if(data_buffer == 0x0000)
+        {
+            printf("Notification disabled\r\n");
+        }
+    }
+}
+*/
+	/*
 typedef struct
 {
   ble_evt_hdr_t header;                 // Event header.
@@ -48,7 +68,6 @@ typedef struct
     ble_gatts_evt_t   gatts_evt;          // GATT server originated event, evt_id in BLE_GATTS_EVT* series.
   } evt;
 } ble_evt_t;
-
 typedef struct
 {
   uint16_t conn_handle;                                       // Connection Handle on which the event occurred.
@@ -61,310 +80,149 @@ typedef struct
     ble_gatts_evt_timeout_t               timeout;            // Timeout Event.
   } params;                                                   // Event Parameters.
 } ble_gatts_evt_t;
+typedef struct
+{
+  uint16_t            conn_handle;                // Connection Handle on which event occured.
+  uint16_t            gatt_status;                // GATT status code for the operation, see @ref BLE_GATT_STATUS_CODES.
+  uint16_t            error_handle;               // In case of error: The handle causing the error. In all other cases @ref BLE_GATT_HANDLE_INVALID.
+  union
+  {
+    ble_gattc_evt_prim_srvc_disc_rsp_t          prim_srvc_disc_rsp;         // Primary Service Discovery Response Event Parameters.
+    ble_gattc_evt_rel_disc_rsp_t                rel_disc_rsp;               // Relationship Discovery Response Event Parameters.
+    ble_gattc_evt_char_disc_rsp_t               char_disc_rsp;              // Characteristic Discovery Response Event Parameters.
+    ble_gattc_evt_desc_disc_rsp_t               desc_disc_rsp;              // Descriptor Discovery Response Event Parameters.
+    ble_gattc_evt_attr_info_disc_rsp_t          attr_info_disc_rsp;         // Attribute Information Discovery Event Parameters.
+    ble_gattc_evt_char_val_by_uuid_read_rsp_t   char_val_by_uuid_read_rsp;  // Characteristic Value Read by UUID Response Event Parameters.
+    ble_gattc_evt_read_rsp_t                    read_rsp;                   // Read Response Event Parameters.
+    ble_gattc_evt_char_vals_read_rsp_t          char_vals_read_rsp;         // Characteristic Values Read Response Event Parameters.
+    ble_gattc_evt_write_rsp_t                   write_rsp;                  // Write Response Event Parameters.
+    ble_gattc_evt_hvx_t                         hvx;                        // Handle Value Notification/Indication Event Parameters.
+    ble_gattc_evt_timeout_t                     timeout;                    // Timeout Event Parameters.
+  } params;                                                                 // Event Parameters. @note Only valid if @ref gatt_status == @ref BLE_GATT_STATUS_SUCCESS.
+} ble_gattc_evt_t;
+typedef struct
+{
+  uint16_t            handle;         // Handle to which the HVx operation applies.
+  uint8_t             type;           // Indication or Notification, see @ref BLE_GATT_HVX_TYPES.
+  uint16_t            len;            // Attribute data length.
+  uint8_t             data[];         // Attribute data, variable length.
+} ble_gattc_evt_hvx_t;
+
 */
 
-void nstrcpy(char *dst, char *src, uint16_t n)
+static void on_recv_data(ble_os_t *p_our_service, ble_evt_t *p_ble_evt)
 {
-	uint16_t i;
-	
-	for (i=0; i<n; i++)
-		*dst++ = *src++;
-}
-
-static void on_ble_write(ble_os_t *p_our_service, ble_evt_t *p_ble_evt)
-{
-		uint8_t i;
-    // Populate ble_gatts_value_t structure to hold received data and metadata.
-    ble_gatts_value_t rx_data;
-    rx_data.len = sizeof(data_buffer);
-    rx_data.offset = 0;
-    rx_data.p_value = (uint8_t *)data_buffer;
+    // Declare buffer variable to hold received data
+    uint8_t *data_buffer;
+		uint32_t i, tmp;
     
+    printf("Characteristic handle for which data is received %#x\r\n", p_ble_evt->evt.gattc_evt.params.hvx.handle);
+    printf("Characteristic handle in the client %#x\r\n", p_our_service->char_handles.value_handle);
+		printf("CCCD handle in the client %#x\r\n", p_our_service->char_handles.cccd_handle);
+		data_buffer = p_ble_evt->evt.gattc_evt.params.hvx.data;
     // Check if write event is performed on our characteristic or the CCCD
-    if(p_ble_evt->evt.gatts_evt.params.write.handle == p_our_service->char_handles.value_handle)
+    //if(p_ble_evt->evt.gattc_evt.params.hvx.handle == p_our_service->char_handles.value_handle)
     {
-        // Get data
-        sd_ble_gatts_value_get(p_our_service->conn_handle, p_our_service->char_handles.value_handle, &rx_data);
-        // Print value
-				
-/*				printf("Value handle data received\r\n");
-        printf("Value handle data: 0x");
-				for (i=0; i<rx_data.len; i++)
-					printf("%02x", rx_data.p_value[i]);
-				printf("\r\n");
-*/				
-				cccd_msg_rcvd = false;
-    }
-    else if(p_ble_evt->evt.gatts_evt.params.write.handle == p_our_service->char_handles.cccd_handle)
-    {
-        // Get data
-        sd_ble_gatts_value_get(p_our_service->conn_handle, p_our_service->char_handles.cccd_handle, &rx_data);
-        // Print value
-        //printf("CCCD handle data: 0x%02x%02x\r\n", rx_data.p_value[1], rx_data.p_value[0]);
-				notif_indic_enabled = true;
-        if(rx_data.p_value[0] == 0x01)
-					printf("Notification enabled\r\n");
-				else if(rx_data.p_value[0] == 0x02)
-					printf("Indication enabled\r\n");
-        else if(rx_data.p_value[0] == 0x00)
+				printf("Received length %x\r\n", p_ble_evt->evt.gattc_evt.params.hvx.len);
+				for (i=4; i > 0; i--)
 				{
-					notif_indic_enabled = false;
-					printf("Notification/Indication disabled\r\n");
+					printf("Value received %#x\r\n", data_buffer[i]);
 				}
-				cccd_msg_rcvd = true;
     }
-		printf("\r\n");
+    //else if(p_ble_evt->evt.gattc_evt.params.hvx.handle == p_our_service->char_handles.cccd_handle)
+    {
+			  tmp = *((uint32_t *) data_buffer);
+        if(tmp == 0x0001)
+        {
+            printf("Notification enabled\r\n");
+        }
+        else if(tmp == 0x0000)
+        {
+            printf("Notification disabled\r\n");
+        }
+    }
 }
 
-void reassemble(ble_os_t *p_our_service, ble_evt_t *p_ble_evt)
-{
-		static uint16_t inx = 0;
-		uint32_t time_from, time_to, time_diff;
-	
-		app_timer_cnt_get(&time_from);
-    on_ble_write(p_our_service, p_ble_evt);
-		if (start_of_pkt)
-		{
-			// data_buffer has the structure (tag, length, data) for the first pkt.
-			// Subsequent pkts all have only data
-			if (cccd_msg_rcvd)
-			{
-				rem_pktlen = 2;
-				printf("Received CCCD message 0x%02x%02x\r\n", data_buffer[1], data_buffer[0]);
-			}
-			else
-			{
-				rem_pktlen = (data_buffer[1] << 8) + data_buffer[2] + 3;
-				printf("Tag %#x Pkt len %#x\r\n", data_buffer[0], rem_pktlen);
-			}
-			pktlen = rem_pktlen;
-			//printf("start_of_pkt %d inx %d rem_pktlen %d\r\n", start_of_pkt, inx, rem_pktlen);
-			start_of_pkt = false;
-			fragment = 1;
-		}
-		if (rem_pktlen >= FRAMESIZE)
-		{
-			//printf("start_of_pkt %d inx %d rem_pktlen %d\r\n", start_of_pkt, inx, rem_pktlen);
-			nstrcpy(&full_data[inx], data_buffer, FRAMESIZE);
-			rem_pktlen -= FRAMESIZE;
-			if (rem_pktlen == 0)
-			{
-				inx = 0;
-				start_of_pkt = true;
-				printf("Received last frame %d\r\n", fragment);
-				fragment++;
-				printf("Data of length %d bytes received\r\n", pktlen);
-			}
-			else
-			{
-				//printf("Received frame %d Remaining data %d\r\n", fragment, rem_pktlen);
-				fragment++;
-				inx += FRAMESIZE;
-			}
-		}
-		else
-		{
-			printf("Received last frame %d\r\n", fragment);
-			fragment++;
-			//printf("start_of_pkt %d inx %d rem_pktlen %d\r\n", start_of_pkt, inx, rem_pktlen);
-			nstrcpy(&full_data[inx], data_buffer, rem_pktlen);
-			printf("Data of length %d bytes received \r\n", pktlen);
-			rem_pktlen = 0;
-//			pktlen = 0;
-			inx = 0;
-			start_of_pkt = true;
-			Tlvformed = true;
-		}
-		app_timer_cnt_get(&time_to);
-		if (time_to <= time_from)
-			time_to = 32768 - time_from + time_to;
-		app_timer_cnt_diff_compute(time_to, time_from, &time_diff);
-		printf("Time in microsecs for single frame receive %.2f\r\n", time_diff * 30.52);
-}
-
-bool fragment_write(ble_os_t *p_our_service)
-{
-		static uint16_t inx = 0;
-
-		if (start_of_pkt)
-		{
-			rem_pktlen = (full_data[1] << 8) + full_data[2];
-			rem_pktlen += 3;
-			start_of_pkt = false;
-			fragment = 1;
-		}
-		//printf("start_of_pkt %d rem_pktlen %d inx %d\r\n", start_of_pkt, rem_pktlen, inx);
-		if (rem_pktlen >= FRAMESIZE)
-		{
-			nstrcpy(data_buffer, &full_data[inx], FRAMESIZE);
-			our_characteristic_update(p_our_service);
-			inx += FRAMESIZE;
-			rem_pktlen -= FRAMESIZE;
-			if (rem_pktlen == 0)
-			{
-				inx = 0;
-				printf("Sent last frame %d\r\n", fragment);
-				fragment++;
-				start_of_pkt = true;
-				return(false);
-			}
-			//printf("Sent frame %d\r\n", fragment);
-			fragment++;
-			return(true);
-		}
-		else
-		{
-			//printf("start_of_pkt %d rem_pktlen %d inx %d\r\n", start_of_pkt, rem_pktlen, inx);
-			nstrcpy(data_buffer, &full_data[inx], rem_pktlen);
-			our_characteristic_update(p_our_service);
-			printf("Sent last frame %d\r\n", fragment);
-			fragment++;
-			rem_pktlen = 0;
-			inx = 0;
-			start_of_pkt = true;
-			return(false);
-		}
-}
-uint16_t get_ble_data(void)
-{
-		Tlvformed = false;
-		while (true)
-		{
-			if (cccd_msg_rcvd)
-				// Ignore. This would have been handled in on_ble_write
-				;
-			if (Tlvformed)
-			{
-//				uint8_t i;
-//				for(i=0;i<pktlen;i++)
-//					printf("%x ",full_data[i]);				
-				ProcessTLV();				
-				return(pktlen);
-			}
-			else
-				power_manage();
-		}
-}
-
-void put_ble_data(ble_os_t *p_our_service)
-{
-		uint16_t len = 97, i;
-		uint32_t time_from, time_to, time_diff, time_interval;
-	
-		app_timer_cnt_get(&time_from);
-//		full_data[0] = 0xE2;
-//		full_data[1] = (len & 0xFF00) >> 8;
-//		full_data[2] = len & 0x00FF;
-//		for (i=3; i<len+3; i++)
-//			full_data[i] = i-2;
-		len=full_data[2]+3;
-		printf("\r\n");	
-		for(i=0;i<len;i++)
-			printf("%x ",full_data[i]);	
-		printf("Sending from device, len %#x\r\n", len);
-		// for Notifications
-		if (! notif_indic_enabled)
-		{
-			printf("Notification/Indication not yet enabled\r\n");
-			return;
-		}
-		while (fragment_write(p_our_service))
-			;
-		// for Indications
-		//fragment_write(p_our_service)
-		app_timer_cnt_get(&time_to);
-		if (time_to <= time_from)
-			time_to = 32768 - time_from + time_to;
-		app_timer_cnt_diff_compute(time_to, time_from, &time_diff);
-		time_interval = (float) time_diff / 32768.0 * 1000.0;
-		printf("Time in microsecs for packet send %.2f\r\n", time_diff * 30.52);
-}
-
+// ALREADY_DONE_FOR_YOU: Declaration of a function that will take care of some housekeeping of ble connections related to our service and characteristic
 void ble_our_service_on_ble_evt(ble_os_t *p_our_service, ble_evt_t *p_ble_evt)
 {
-		//static uint32_t	comm_limit = 0;
+		static uint8_t  resp[] = { 'K', 'O', 0x02, 0xE0 };
 		uint8_t i;
-		static int8_t count = 1;
-		//uint16_t len = 7;
-	
+
+    // OUR_JOB: Step 3.D Implement switch case handling BLE events related to our service. 
     switch (p_ble_evt->header.evt_id)
     {   
-        case BLE_GAP_EVT_CONNECTED:
-						printf("Received event BLE_GAP_EVT_CONNECTED\n\r\n\r");
-            p_our_service->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-						count = 1;
-						break;
-				
-        case BLE_GATTS_EVT_WRITE:
-						//printf("Received event BLE_GATTS_EVT_WRITE\n\r");
-						reassemble(p_our_service, p_ble_evt);
-						/*
-						if (start_of_pkt && comm_limit < 10)
-						{
-							printf("Sending from device, len %#x, count %d\r\n", len, count);
-							full_data[0] = 0xE2;
-							full_data[1] = (len & 0xFF00) >> 8;
-							full_data[2] = len & 0x00FF;
-							for (i=3; i<len+3; i++)
-								full_data[i] = i-2;
-							put_ble_data(p_our_service);
-							//while (fragment_write(p_our_service)) ;
-							//fragment_write(p_our_service);
-							comm_limit++;
-							//comm_limit = 0;	// disabling the limit
-							count++;
-						}
-						*/
-
+			
+        case BLE_GATTC_EVT_HVX:
+						printf("Received event BLE_GATTC_EVT_HVX\n\r");
+						mob_data = p_ble_evt->evt.gattc_evt.params.hvx;
+            printf("Attribute handle is %x:\r\n", mob_data.handle);
+            printf("Type is %x:\r\n", mob_data.type);
+            printf("length is %x:\r\n", mob_data.len);
+						for (i=0; i<mob_data.len; i++)
+							printf("Data is %x:\r\n", mob_data.data[i]);
+            //on_recv_data(p_our_service, p_ble_evt);
+						sd_ble_gattc_hv_confirm(p_our_service->conn_handle, p_our_service->char_handles.value_handle);
+						our_temperature_characteristic_update(p_our_service, (int32_t *)resp);
+						resp[0]++;
             break;
 
+        case BLE_GAP_EVT_CONNECTED:
+						printf("Received event BLE_GAP_EVT_CONNECTED\n\r");
+            p_our_service->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+						printf("Connected\n\r");
+						our_temperature_characteristic_update(p_our_service, (int32_t *)resp);
+						resp[0] = 0;
+						resp[1] = 0;
+						resp[2] = 0x02;
+						resp[3] = 0;
+						//printf("Connection handle %#x:\r\n", p_ble_evt->evt.gap_evt.conn_handle);
+						break;
         case BLE_GAP_EVT_DISCONNECTED:
-						printf("Received event BLE_GAP_EVT_DISCONNECTED\n\r\n\r");
+						printf("Received event BLE_GAP_EVT_DISCONNECTED\n\r");
             p_our_service->conn_handle = BLE_CONN_HANDLE_INVALID;
             break;
-
-        case BLE_GATTS_EVT_HVC:
-						printf("Received event BLE_GATTS_EVT_HVC\n\r\n\r");
-						if (! start_of_pkt) fragment_write(p_our_service);
+				/*
+				typedef struct
+				{
+					uint16_t            handle;           // Attribute Handle
+					uint8_t             write_op;         // Type of write operation, see @ref BLE_GATT_WRITE_OPS
+					uint16_t            offset;           // Data offset
+					uint16_t            len;              // Data length
+					uint8_t             data[];           // Data, variable length
+				} ble_gattc_evt_write_rsp_t;
+				*/
+				
+        case BLE_GATTC_EVT_WRITE_RSP:
+						printf("Received event BLE_GATTC_EVT_WRITE_RSP\n\r");					
+						mob_rsp = p_ble_evt->evt.gattc_evt.params.write_rsp;
+            printf("Attribute handle is %x:\r\n", mob_rsp.handle);
+            printf("write_op is %x:\r\n", mob_rsp.write_op);
+            printf("offset is %x:\r\n", mob_rsp.offset);
+            printf("length is %x:\r\n", mob_rsp.len);
+						for (i=0; i<mob_rsp.len; i++)
+							printf("Data is %x:\r\n", mob_rsp.data[i]);
+						
             break;
-
-				case BLE_GAP_EVT_CONN_PARAM_UPDATE:
-						/*
-						typedef struct
-						{
-							uint16_t min_conn_interval;         // Minimum Connection Interval in 1.25 ms units
-							uint16_t max_conn_interval;         // Maximum Connection Interval in 1.25 ms units
-							uint16_t slave_latency;             // Slave Latency in number of connection events
-							uint16_t conn_sup_timeout;          // Connection Supervision Timeout in 10 ms units
-						} ble_gap_conn_params_t;
-						*/
-						//printf("Received event BLE_GAP_EVT_CONN_PARAM_UPDATE\n\r");
-						conn_params_req = p_ble_evt->evt.gap_evt.params.conn_param_update.conn_params;
-						//printf("min_conn_interval %#06x\r\n", conn_params_req.min_conn_interval);
-						//printf("max_conn_interval %#06x\r\n", conn_params_req.max_conn_interval);
-						//printf("\r\n");
-						break;
-
-				case BLE_EVT_TX_COMPLETE:
-						//printf("Received event BLE_EVT_TX_COMPLETE\n\r\n\r");
-						break;
-
+				
         default:
+						printf("Received event %#x\n\r", p_ble_evt->header.evt_id);
             // No implementation needed.
-						printf("Received event %#x\n\r\n\r", p_ble_evt->header.evt_id);
             break;
     }
 }
 
-/**@brief Function for adding our new characterstic to "Our service". 
+/**@brief Function for adding our new characterstic to "Our service" that we initiated in the previous tutorial. 
  *
  * @param[in]   p_our_service        Our Service structure.
  *
  */
 
 static uint32_t our_char_add(ble_os_t *p_our_service)
-{   
-    // Add a custom characteristic UUID
+{
+    uint32_t   err_code = 0; // Variable to hold return codes from library and softdevice functions
+    
+    // OUR_JOB: Step 2.A, Add a custom characteristic UUID
     ble_uuid_t          char_uuid;
     ble_uuid128_t       base_uuid = BLE_UUID_OUR_CHARACTERISTIC_BASE_UUID;
     char_uuid.uuid      = BLE_UUID_OUR_CHARACTERISTC_UUID;
@@ -373,13 +231,13 @@ static uint32_t our_char_add(ble_os_t *p_our_service)
 		//printf("Char add: %#x %#x\n\r", err_code, char_uuid.type);
     APP_ERROR_CHECK(err_code);
     
-    // Add read/write properties to our characteristic
+    // OUR_JOB: Step 2.F Add read/write properties to our characteristic
     ble_gatts_char_md_t char_md;
     memset(&char_md, 0, sizeof(char_md));
     char_md.char_props.read = 1;
     char_md.char_props.write = 1;
     
-    // Configuring Client Characteristic Configuration Descriptor metadata and add to char_md structure
+    // OUR_JOB: Step 3.A, Configuring Client Characteristic Configuration Descriptor metadata and add to char_md structure
     ble_gatts_attr_md_t cccd_md;
     memset(&cccd_md, 0, sizeof(cccd_md));
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&cccd_md.read_perm);
@@ -388,28 +246,28 @@ static uint32_t our_char_add(ble_os_t *p_our_service)
     char_md.p_cccd_md           = &cccd_md;
     char_md.char_props.notify   = 1;
     
-    // Configure the attribute metadata
+    // OUR_JOB: Step 2.B, Configure the attribute metadata
     ble_gatts_attr_md_t attr_md;
     memset(&attr_md, 0, sizeof(attr_md)); 
     attr_md.vloc        = BLE_GATTS_VLOC_STACK;   
  
-    // Set read/write security levels to our characteristic
+    // OUR_JOB: Step 2.G, Set read/write security levels to our characteristic
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.write_perm);
 
-    // Configure the characteristic value attribute
+    // OUR_JOB: Step 2.C, Configure the characteristic value attribute
     ble_gatts_attr_t    attr_char_value;
     memset(&attr_char_value, 0, sizeof(attr_char_value));        
     attr_char_value.p_uuid      = &char_uuid;
     attr_char_value.p_attr_md   = &attr_md;
     
-    // Set characteristic length in number of bytes
-    attr_char_value.max_len     = 20;
-    attr_char_value.init_len    = 2;
-    uint8_t value[2]            = {0xE0,0x00};
+    // OUR_JOB: Step 2.H, Set characteristic length in number of bytes
+    attr_char_value.max_len     = 4;
+    attr_char_value.init_len    = 4;
+    uint8_t value[4]            = {0x12,0x34,0x56,0x78};
     attr_char_value.p_value     = value;
 		
-    // Add our new characteristic to the service
+    // OUR_JOB: Step 2.E, Add our new characteristic to the service
     err_code = sd_ble_gatts_characteristic_add(p_our_service->service_handle,
                                        &char_md,
                                        &attr_char_value,
@@ -417,10 +275,10 @@ static uint32_t our_char_add(ble_os_t *p_our_service)
 		//printf("Char add: %#x\n\r", err_code);
     APP_ERROR_CHECK(err_code);
     
-    //printf("Service handle: %#x\n\r", p_our_service->service_handle);
-    //printf("Service connection handle: %#x\n\r", p_our_service->conn_handle);
-    printf("Characteristic value handle: %#x\r\n", p_our_service->char_handles.value_handle);
-    printf("Characteristic CCCD handle: %#x\r\n\r\n", p_our_service->char_handles.cccd_handle);
+    printf("Service handle: %#x\n\r", p_our_service->service_handle);
+    printf("Service connection handle: %#x\n\r", p_our_service->conn_handle);
+    printf("Char value handle: %#x\r\n", p_our_service->char_handles.value_handle);
+    printf("Char cccd handle: %#x\r\n\r\n", p_our_service->char_handles.cccd_handle);
 
     return NRF_SUCCESS;
 }
@@ -433,45 +291,76 @@ static uint32_t our_char_add(ble_os_t *p_our_service)
  */
 void our_service_init(ble_os_t *p_our_service)
 {
-    // Declare 16-bit service and 128-bit base UUIDs and add them to the BLE stack
+    uint32_t   err_code; // Variable to hold return codes from library and softdevice functions
+
+    // FROM_SERVICE_TUTORIAL: Declare 16-bit service and 128-bit base UUIDs and add them to the BLE stack
     ble_uuid_t        service_uuid;
     ble_uuid128_t     base_uuid = BLE_UUID_OUR_SERVICE_BASE_UUID;
     service_uuid.uuid = BLE_UUID_OUR_SERVICE_UUID;
     err_code = sd_ble_uuid_vs_add(&base_uuid, &service_uuid.type);
 		//printf("Service add: %#x %#x\n\r", err_code, service_uuid.type);
+
     APP_ERROR_CHECK(err_code);    
     
-    // Set our service connection handle to default value. i.e., an invalid handle since we are not yet in a connection.
+    // OUR_JOB: Step 3.B, Set our service connection handle to default value. I.e. an invalid handle since we are not yet in a connection.
     p_our_service->conn_handle = BLE_CONN_HANDLE_INVALID;
 
-    // Add our service
+    // FROM_SERVICE_TUTORIAL: Add our service
     err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY,
                                         &service_uuid,
-                                        &p_our_service->service_handle);  
+                                        &p_our_service->service_handle);
+    
 		//printf("Service add: %#x\n\r", err_code);
     APP_ERROR_CHECK(err_code);
     
-    // Call the function our_char_add() to add our new characteristic to the service. 
+    // OUR_JOB: Call the function our_char_add() to add our new characteristic to the service. 
    our_char_add(p_our_service);
+
 }
 
-// Function to be called when updating characteristic value
-void our_characteristic_update(ble_os_t *p_our_service)
+// ALREADY_DONE_FOR_YOU: Function to be called when updating characteristic value
+void our_temperature_characteristic_update(ble_os_t *p_our_service, int32_t *temperature_value)
 {
+	/*
+		typedef struct
+		{
+			uint16_t                    handle;             // Attribute Handle
+			uint8_t                     op;                 // Type of write operation, see @ref BLE_GATTS_OPS
+			uint8_t                     auth_required;      // Writing operation deferred due to authorization requirement. Application may use @ref sd_ble_gatts_value_set to finalise the writing operation
+			ble_gatts_attr_context_t    context;            // Attribute Context
+			uint16_t                    offset;             // Offset for the write operation
+			uint16_t                    len;                // Length of the received data
+			uint8_t                     data[];             // Received data, variable length
+		} ble_gatts_evt_write_t;
+	*/
+    // OUR_JOB: Step 3.E, Update characteristic value
+		//printf("service handle: %#x\n\r", p_our_service->conn_handle);
     if (p_our_service->conn_handle != BLE_CONN_HANDLE_INVALID)
     {
-        uint16_t						len = 20;
-			
-        memset(&hvx_params, 0, sizeof(hvx_params));
+        //uint16_t               len = 4;
+        //ble_gatts_hvx_params_t hvx_params;
+        //memset(&hvx_params, 0, sizeof(hvx_params));
 
-        hvx_params.handle = p_our_service->char_handles.value_handle;
-        hvx_params.type   = BLE_GATT_HVX_NOTIFICATION;
-        hvx_params.offset = 0;
-        hvx_params.p_len  = &len;
-				hvx_params.p_data = (uint8_t*)data_buffer;  
+        //hvx_params.handle = p_our_service->char_handles.value_handle;
+        //hvx_params.type   = BLE_GATT_HVX_NOTIFICATION;
+        //hvx_params.offset = 0;
+        //hvx_params.p_len  = &len;
+        //hvx_params.p_data = (uint8_t*)temperature_value;  
 
-				err_code = sd_ble_gatts_hvx(p_our_service->conn_handle, &hvx_params);
-				//printf("Error code for writing by device: %x\n\r", err_code);
+        //sd_ble_gatts_hvx(p_our_service->conn_handle, &hvx_params);
+
+				uint32_t                 err_code;
+				ble_gattc_write_params_t write_params;
+
+				write_params.write_op = BLE_GATT_OP_WRITE_REQ;
+				write_params.handle   = p_our_service->char_handles.value_handle;
+				write_params.offset   = 0;
+				write_params.len      = sizeof(temperature_value);
+				write_params.p_value  = (uint8_t*)temperature_value;
+
+				err_code = sd_ble_gattc_write(p_our_service->conn_handle, &write_params);
 				APP_ERROR_CHECK(err_code);
+				printf("Value transmitted: %#04x\n\r", *temperature_value);
+			
     }   
 }
